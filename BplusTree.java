@@ -357,7 +357,7 @@ public class BplusTree{
         n5.elink = n6;
         Scanner in = new Scanner(System.in); 
         int i=0,k;
-        while(i<200){
+        while(i<1000){
             k = in.nextInt();
             System.out.println("INput Value is"+ k);
             parent = op.insert(parent,k);
