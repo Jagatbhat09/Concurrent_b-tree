@@ -1,4 +1,5 @@
 import java.util.Scanner;
+import java.util.Random;
 import java.util.Arrays;
 import java.io.*;
 
@@ -14,6 +15,7 @@ class BPnode{
     int [] key;
     int no;
     char nt;
+    Lock lock = new Lock();
 
     //constructor for BPnode which takes n_key as parameter and assigns all link to null and values to -999
     public BPnode(int n_key){
@@ -78,11 +80,27 @@ class BPnode{
         for(int i= get_no_items(key.length)-1;i>=index;i--)
             this.link[i+1] = this.link[i];
     }
-    //
+    public void copy_vl(BPnode temp,int n_key){
+        int no = temp.get_no_items(n_key);
+        for(int i=0;i<no;i++){
+            this.link[i]= temp.link[i];
+            this.key[i] = temp.key[i];
+            temp.key[i] = -999;
+            temp.link[i] = null;
+        }
+        this.link[no] = temp.link[no];
+        temp.link[no] = null;
+        return;
+    }
+
+
+    //something is goin wrong here
     public BPnode yet_to_be_named(int [] temp_keys,int n_key,int val)
     {
         int middle_key = (n_key+1)/2,i,j;
         BPnode s_node = new BPnode(n_key);
+        for(int k=0;k<=n_key;k++)
+            System.out.println(temp_keys[k]);
 
         j = middle_key+ val;
         for(i=0;i<n_key;i++){
@@ -147,41 +165,33 @@ class BPT{
 
     public BPnode split_node(BPnode parent,BPnode father, BPnode child, int item,int no_items_father){
         int temp_keys[] = combine_array(child,item),middle_key = (n_key+1)/2,i,j,ind,val=1;
-        // locking the child 
-
-
-
         if(child.is_leaf_node())
             val = 0;
         if(child.is_leaf_node() && no_items_father < n_key){
-                 BPnode s_node = child.yet_to_be_named(temp_keys,n_key,val);
-                if(no_items_father < n_key) {
-                    father.insert_item_into_node(temp_keys[middle_key],father.get_no_items(n_key)); 
-                    father.shift_links(((ind = father.find_index_of_item(temp_keys[middle_key]))+1));
-                    father.link[ind+1] = s_node;
-                    return parent;
-                }    
-            
+            BPnode s_node = child.yet_to_be_named(temp_keys,n_key,val);
+            if(no_items_father < n_key) {
+                father.insert_item_into_node(temp_keys[middle_key],father.get_no_items(n_key)); 
+                father.shift_links(((ind = father.find_index_of_item(temp_keys[middle_key]))+1));
+                father.link[ind+1] = s_node;
+                return parent;
+            }    
         }
         else {
-
-
             if(no_items_father < n_key){
                 father.insert_item_into_node(item,father.get_no_items(n_key));
                 father.shift_links(((ind = father.find_index_of_item(item))+1));
                 father.link[ind+1] = child;
                 return parent;
-
             }
             else {
                 int father_keys[] = combine_array(father,temp_keys[middle_key]);
+                if(father.is_leaf_node())
+                    father_keys = temp_keys;
                 BPnode s_node;
-                //System.out.println(child.link[0].is_leaf_node());
                 if( !child.is_leaf_node() ){//&&  child.link[0].is_leaf_node()){ 
                     System.out.println(child.link[0].is_leaf_node());
                     father_keys = combine_array(father,item);
                     s_node = child;         
-
                 }
                 else
                     s_node = child.yet_to_be_named(temp_keys,n_key,val);   //got a problem here      
@@ -222,17 +232,17 @@ class BPT{
                 BPnode parent_of_father = find_parent(parent,father);
                 if(father == parent && no_items_father == n_key)
                 {
-                    BPnode god_father = new BPnode(n_key);
-                    
-                    god_father.key[0] = father_keys[middle_key]; //??
-                    god_father.link[0] = father;
-                    god_father.link[1] = fs_node ;
-                    if(parent.is_leaf_node()){
-                    System.out.println("god father and its childres no "+god_father.no+father.no+s_node.no);
-                        father.elink = s_node;
-                        god_father.link[1] = s_node;
-                    }
-                    return god_father;
+                    BPnode god_father = new BPnode(n_key); // rename god_father to split child;
+                    if(parent.is_leaf_node())
+                        fs_node = s_node;
+
+                    god_father.copy_vl(father,n_key);
+                    father.key[0] = father_keys[middle_key]; //??
+                    father.link[0] = god_father;
+                    father.link[1] = fs_node ;
+                    god_father.elink = fs_node;
+
+                    return father;
                 }   
                 return split_node(parent,parent_of_father,fs_node,father_keys[middle_key],parent_of_father.get_no_items(n_key));
                 }
@@ -243,7 +253,7 @@ class BPT{
         }
 
         //recursive method which traverse and inserts the item in correct place! splitting is done if necessary
-        public BPnode insert(BPnode parent,BPnode root,int item){
+        public synchronized BPnode insert(BPnode parent,BPnode root,int item){
 
             int n_items_in_rnode = root.get_no_items(n_key),i;
             BPnode father = find_parent(parent,root);
@@ -255,9 +265,14 @@ class BPT{
                 //*****  Call move right if necessary and make sure that it should be unblocked once insertion is successful
                 //root.move_right();
                 //if external node is not full
+                
                 if(n_items_in_rnode < this.n_key){
-                   root.insert_item_into_node(item,n_items_in_rnode);
-                   return parent;
+                    try{
+                    root.lock.lock();
+                    root.insert_item_into_node(item,n_items_in_rnode);
+                    } catch (Exception e) {;  }
+                    root.lock.unlock();
+                    return parent;
                 }
 
                 //if external node is full 
@@ -298,15 +313,15 @@ class BPT{
                 for(int i=0;i<n_key && root.key[i] != -999 ;i++)
                     out.print(root.key[i]+" ");
                 out.print("\"]\n");
-     //           for(BPnode temp = root; temp.elink!=null ;temp= temp.elink)
-   //                  out.println(temp.no+"->"+temp.elink.no+";");
+                //           for(BPnode temp = root; temp.elink!=null ;temp= temp.elink)
+                //                  out.println(temp.no+"->"+temp.elink.no+";");
                 if(root.link[0] != null){
                     for(int i=0;(i<n_key+1 && root.link[i] != null);i++)
                         out.println(root.no+"->"+root.link[i].no+";");
                     for(int i=0;i<=n_key && root.link[i] != null;i++)
                         preorderDump(root.link[i],out);
                 }
-                
+
 
             }
             public void exterlinkDump(BPnode root,PrintWriter out) {
@@ -340,23 +355,73 @@ class BPT{
 
         }
 
-        public class BplusTree{
+        class ThreadClass implements Runnable {
+            BPnode parent;
+            BPT op;
+            Thread t;
+            Random randomG = new Random();
+            Scanner in = new Scanner(System.in);
+
+            ThreadClass(BPnode parent,BPT tar){
+                op = tar;
+                this.parent = parent;
+                t = new Thread(this);
+                t.start();
+            }
+
+            public void run(){
+                //generate random number and insert
+              try {
+               for(int i=0;i<5;i++) {
+   //               t.sleep(1000);
+                  parent = op.insert(parent,in.nextInt());
+               
+               }
+               op.display(parent);
+    ;
+              } catch (Exception e){ ; }
+                ;
+            }
+        }
+
+        class Lock{
+            private boolean isLocked = false;
+
+            public synchronized void lock() throws InterruptedException {
+                
+                while(isLocked) {
+                    wait();
+                }
+                isLocked = true;
+            }
+            public synchronized void unlock() {
+                isLocked = false;
+                notify();
+            }
+        }
+
+        class BplusTree{
             public static void main(String[] args){
                 Scanner in = new Scanner(System.in); 
                 GlobalVariables.no_keys = in.nextInt();
                 BPT op = new BPT(GlobalVariables.no_keys);
-                BPnode root = new BPnode(GlobalVariables.no_keys);
-                BPnode parent;
-                parent = root;
-                int i=0,k;
-                while(i<10000){
+
+                BPnode parent = new BPnode(GlobalVariables.no_keys);
+                ThreadClass th1 = new ThreadClass(parent,op);
+
+                int i=in.nextInt(),k;
+                while(i>0){
+                    try {
+ //                   Thread.sleep(1000);
                     k = in.nextInt();
                     System.out.println("INput Value is"+ k);
                     parent = op.insert(parent,k);
-                    i++;
+                    i--;
+                    } catch (Exception e){ ;} 
                 }
-                    op.display(parent);
-                System.out.println(parent.no);
+                op.display(parent);
+                try {
+                }catch (Exception e) { ;}
             }
         }
 
